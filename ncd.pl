@@ -72,6 +72,7 @@ sub main {
     } elsif ( @ARGV > 2 ) {
         # compare all files pairwise and print the matrix
         for my $i ( 1 .. $#ARGV ) {
+            local $| = 1;
             for my $j ( 0 .. $#ARGV ) {
                 next if $i <= $j;
                 my $data1 = read_file( $ARGV[$i] );
