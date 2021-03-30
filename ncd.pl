@@ -61,7 +61,8 @@ sub read_file ( $filename ) {
 
 sub main {
     GetOptions(
-        'compressor=s' => \my $compressor,
+        'compressor=s'  => \my $compressor,
+        'tsv'           => \my $tsv,
     );
 
     if ( @ARGV == 2 ) {
@@ -77,9 +78,14 @@ sub main {
                 next if $i <= $j;
                 my $data1 = read_file( $ARGV[$i] );
                 my $data2 = read_file( $ARGV[$j] );
-                printf "%.03f ", ncd( $data1, $data2, $compressor || () );
+                my $similarity = ncd( $data1, $data2, $compressor || () );
+                if ( $tsv ) {
+                    say join "\t", $similarity, $ARGV[$i], $ARGV[$j];
+                } else {
+                    printf '%.03f ', $similarity;
+                }
             }
-            print "\n";
+            print "\n" unless $tsv;
         }
     } else {
         die "Usage: $0 [--compressor=...] FILES\n";
