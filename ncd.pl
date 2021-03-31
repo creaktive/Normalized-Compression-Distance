@@ -4,10 +4,10 @@ use experimental qw( signatures );
 use warnings qw( all );
 no warnings qw( experimental::signatures );
 
-use Digest::SHA qw( sha256 );
 use Getopt::Long qw( GetOptions );
+use List::Util qw( max );
 
-sub ncd ( $x, $y, $C = 'gzip' ) {
+sub ncd ( $x, $y, $C = 'gzip', $x_key = undef, $y_key = undef ) {
     state $cache = {};
     state $compressors = {
         bzip2 => sub ( $data ) {
@@ -26,7 +26,7 @@ sub ncd ( $x, $y, $C = 'gzip' ) {
         },
         xz => sub ( $data ) {
             require IO::Compress::Xz;
-            IO::Compress::Xz::xz( \$data, \my $tmp, Preset => 9 );
+            IO::Compress::Xz::xz( \$data, \my $tmp, Preset => 9, Extreme => 1 );
             return length $tmp;
         },
         zstd => sub ( $data ) {
@@ -40,8 +40,14 @@ sub ncd ( $x, $y, $C = 'gzip' ) {
         or die "Unknown compressor '$C'. Pick one from: @{[ sort keys %$compressors ]}\n";
 
     # https://complearn.org/ncd.html
-    my $Cx  = $cache->{ sha256( $x ) } //= $compressor->( $x );
-    my $Cy  = $cache->{ sha256( $y ) } //= $compressor->( $y );
+    my ( $Cx, $Cy );
+    if ( $x_key && $y_key ) {
+        $Cx = $cache->{ $x_key } //= $compressor->( $x );
+        $Cy = $cache->{ $y_key } //= $compressor->( $y );
+    } else {
+        $Cx = $compressor->( $x );
+        $Cy = $compressor->( $y );
+    }
     my $Cxy = $compressor->( $x . $y );
     my ( $min, $max ) = $Cx < $Cy
         ? ( $Cx, $Cy )
@@ -64,23 +70,34 @@ sub main {
         'compressor=s'  => \my $compressor,
         'tsv'           => \my $tsv,
     );
+    $compressor ||= 'gzip';
 
     if ( @ARGV == 2 ) {
         # compare 2 files
-        my $data1 = read_file( $ARGV[0] );
-        my $data2 = read_file( $ARGV[1] );
-        say ncd( $data1, $data2, $compressor || () );
+        say ncd(
+            read_file( $ARGV[0] ),
+            read_file( $ARGV[1] ),
+            $compressor
+        );
     } elsif ( @ARGV > 2 ) {
         # compare all files pairwise and print the matrix
-        for my $i ( 1 .. $#ARGV ) {
-            local $| = 1;
+        local $| = 1;
+        my $filename_length = max map { length } @ARGV;
+        for my $i ( 0 .. $#ARGV ) {
+            my $file_x = $ARGV[$i];
+            printf "%-${filename_length}s ", $file_x;
             for my $j ( 0 .. $#ARGV ) {
                 next if $i <= $j;
-                my $data1 = read_file( $ARGV[$i] );
-                my $data2 = read_file( $ARGV[$j] );
-                my $similarity = ncd( $data1, $data2, $compressor || () );
+                my $file_y = $ARGV[$j];
+                my $similarity = ncd(
+                    read_file( $file_x ),
+                    read_file( $file_y ),
+                    $compressor,
+                    $file_x,
+                    $file_y
+                );
                 if ( $tsv ) {
-                    say join "\t", $similarity, $ARGV[$i], $ARGV[$j];
+                    say join "\t", $similarity, $file_x, $file_y;
                 } else {
                     printf '%.03f ', $similarity;
                 }
