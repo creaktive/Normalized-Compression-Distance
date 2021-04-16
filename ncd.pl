@@ -5,9 +5,9 @@ use warnings qw( all );
 no warnings qw( experimental::signatures );
 
 use Getopt::Long qw( GetOptions );
-use List::Util qw( max );
+use List::Util qw( max min );
 
-sub ncd ( $x, $y, $C = 'gzip', $x_key = undef, $y_key = undef ) {
+sub ncd ( $x, $y, $C = 'gzip', $x_key = undef, $y_key = undef, $try_swapping = 0 ) {
     state $cache = {};
     state $compressors = {
         bzip2 => sub ( $data ) {
@@ -52,7 +52,9 @@ sub ncd ( $x, $y, $C = 'gzip', $x_key = undef, $y_key = undef ) {
         $Cx = $compressor->( $x );
         $Cy = $compressor->( $y );
     }
-    my $Cxy = $compressor->( $x . $y );
+    my $Cxy = $try_swapping
+        ? min( $compressor->( $x . $y ), $compressor->( $y . $x ) )
+        : $compressor->( $x . $y );
     my ( $min, $max ) = $Cx < $Cy
         ? ( $Cx, $Cy )
         : ( $Cy, $Cx );
@@ -72,6 +74,7 @@ sub read_file ( $filename ) {
 sub main {
     GetOptions(
         'compressor=s'  => \my $compressor,
+        'try_swapping'  => \my $try_swapping,
         'tsv'           => \my $tsv,
     );
     $compressor ||= 'gzip';
@@ -81,7 +84,9 @@ sub main {
         say ncd(
             read_file( $ARGV[0] ),
             read_file( $ARGV[1] ),
-            $compressor
+            $compressor,
+            undef, undef,
+            $try_swapping
         );
     } elsif ( @ARGV > 2 ) {
         # compare all files pairwise and print the matrix
@@ -98,7 +103,8 @@ sub main {
                     read_file( $file_y ),
                     $compressor,
                     $file_x,
-                    $file_y
+                    $file_y,
+                    $try_swapping,
                 );
                 if ( $tsv ) {
                     say join "\t", $similarity, $file_x, $file_y;
