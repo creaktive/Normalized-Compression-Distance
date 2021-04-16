@@ -13,7 +13,8 @@ sub ncd ( $x, $y, $C = 'gzip', $x_key = undef, $y_key = undef ) {
         bzip2 => sub ( $data ) {
             require IO::Compress::Bzip2;
             IO::Compress::Bzip2::bzip2( \$data, \my $tmp, BlockSize100K => 9 );
-            return length $tmp;
+            # a .bz2 stream consists of a 4-byte header
+            return length( $tmp ) - 4;
         },
         gzip => sub ( $data ) {
             require Compress::Zlib;
@@ -22,16 +23,19 @@ sub ncd ( $x, $y, $C = 'gzip', $x_key = undef, $y_key = undef ) {
         },
         zlib => sub ( $data ) {
             require Compress::Zlib;
-            return length Compress::Zlib::compress( $data, 9 );
+            # XXX: double-check RFC-1950
+            return length( Compress::Zlib::compress( $data, 9 ) ) - 2;
         },
         xz => sub ( $data ) {
             require IO::Compress::Xz;
             IO::Compress::Xz::xz( \$data, \my $tmp, Preset => 9, Extreme => 1 );
-            return length $tmp;
+            # XZ Stream Header (12 bytes)
+            return length( $tmp ) - 12;
         },
         zstd => sub ( $data ) {
             require Compress::Stream::Zstd;
-            return length Compress::Stream::Zstd::compress( $data, 19 );
+            # XXX: header size is variable (from 6 to 18 bytes)
+            return length( Compress::Stream::Zstd::compress( $data, 19 ) ) - 6;
         },
     };
 
